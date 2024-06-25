@@ -145,9 +145,15 @@ spec:
                 ARCH=$(jq -r '.platform.architecture' <<< "$ARCH_DETAIL")
                 ARCH_DIGEST=$(jq -r '.digest' <<< "$ARCH_DETAIL")
 
+                ORAS_ARGS=()
+                if [ "$MEDIA_TYPE" == "application/vnd.docker.distribution.manifest.list.v2+json" ]; then
+                  ORAS_ARGS+=("--platform $OS/$ARCH")
+                fi
+
                 oras manifest fetch \
                   --registry-config "$AUTH_FILE" \
-                  --platform "$OS/$ARCH" "${PULLSPEC}" \
+                  "${ORAS_ARGS[@]}" \
+                  "${PULLSPEC}" \
                       | tee /tmp/oras-manifest-fetch.json
 
                 PYXIS_CERT_PATH=/tmp/crt PYXIS_KEY_PATH=/tmp/key create_container_image \
