@@ -135,6 +135,9 @@ spec:
                 TAGS=$(jq -r ".components[${i}].tags | join(\" \")" "${SNAPSHOT_SPEC_FILE}")
             fi
 
+            AUTH_FILE=$(mktemp)
+            select-oci-auth "${REPOSITORY}" > "$AUTH_FILE"
+
             index=0
             while IFS= read -r ARCH_DETAIL;
             do
@@ -142,8 +145,10 @@ spec:
                 ARCH=$(jq -r '.platform.architecture' <<< "$ARCH_DETAIL")
                 ARCH_DIGEST=$(jq -r '.digest' <<< "$ARCH_DETAIL")
 
-                skopeo inspect --no-tags --override-os "$OS" --override-arch "$ARCH" "docker://${PULLSPEC}" \
-                    | tee /tmp/skopeo-inspect.json
+                oras manifest fetch \
+                  --registry-config "$AUTH_FILE" \
+                  --platform "$OS/$ARCH" "${PULLSPEC}" \
+                      | tee /tmp/oras-manifest-fetch.json
 
                 PYXIS_CERT_PATH=/tmp/crt PYXIS_KEY_PATH=/tmp/key create_container_image \
                   --pyxis-url $PYXIS_URL \
@@ -151,9 +156,12 @@ spec:
                   --tags "$TAGS" \
                   --is-latest $(params.isLatest) \
                   --verbose \
-                  --skopeo-result "/tmp/skopeo-inspect.json" \
+                  --oras-manifest-fetch "/tmp/oras-manifest-fetch.json" \
+                  --name "$REPOSITORY" \
                   --media-type "$MEDIA_TYPE" \
+                  --digest "$DIGEST" \
                   --architecture-digest "$ARCH_DIGEST" \
+                  --architecture "$ARCH" \
                   --rh-push $(params.rhPush) | tee "/tmp/output"
                 # The rh-push-to-external-registry e2e test depends on this line being in the task log
                 IMAGEID=$(awk '/The image id is/{print $NF}' /tmp/output)

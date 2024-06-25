@@ -40,12 +40,7 @@ spec:
 
         push_image () { # Expected arguments are [origin_digest, name, containerImage, repository, tag, arch]
           # note: Inspection might fail on empty repos, hence `|| true`
-          destination_digest=$(
-            skopeo inspect \
-            --override-arch "$6" \
-            --no-tags \
-            --format '{{.Digest}}' \
-            "docker://$4:$5" 2>/dev/null || true)
+          destination_digest=$(oras resolve --registry-config "$AUTH_FILE" --platform "$6" "$4:$5" 2>/dev/null || true)
 
           if [[ "$destination_digest" != "$1" || -z "$destination_digest" ]]; then
             printf '* Pushing component: %s to %s:%s\n' "$2" "$4" "$5"
@@ -99,17 +94,16 @@ spec:
           repository=$(jq -r '.repository' <<< $component)
           imageTags=$(jq '.tags' <<< $component)
 
+          AUTH_FILE=$(mktemp)
+          select-oci-auth "${containerImage}" > "$AUTH_FILE"
+
           # Just read the first from the list of architectures
           read -r arch_json <<< $(get-image-architectures "${containerImage}")
           arch=$(echo "${arch_json}" | jq -r .platform.architecture)
           name=$(jq -r '.name' <<< $component)
           git_sha=$(jq -r '.source.git.revision' <<< $component) # this sets the value to "null" if it doesn't exist
 
-          origin_digest=$(skopeo inspect \
-            --override-arch "${arch}" \
-            --no-tags \
-            --format '{{.Digest}}' \
-            "docker://${containerImage}" 2>/dev/null)
+          origin_digest=$(oras resolve --registry-config "$AUTH_FILE" --platform "${arch}" "${containerImage}" 2>/dev/null)
 
           # Push source container if the component has pushSourceContainer: true or if the
           # pushSourceContainer key is missing from the component and the defaults has
@@ -123,11 +117,7 @@ spec:
             # Calculate the source container image based on the provided container image
             sourceContainer="${source_repo}:${source_tag}"
             # Check if the source container exists
-            source_container_digest=$(skopeo inspect \
-              --override-arch "${arch}" \
-              --no-tags \
-              --format '{{.Digest}}' \
-              "docker://${sourceContainer}" 2>/dev/null)
+            source_container_digest=$(oras resolve --registry-config "$AUTH_FILE" --platform "${arch}" "${sourceContainer}" 2>/dev/null)
 
             if [ -z "$source_container_digest" ] ; then
               echo "Error: Source container ${sourceContainer} not found!"
@@ -205,11 +195,7 @@ spec:
             # Calculate the source container image based on the provided container image
             sourceContainer="${source_repo}:${source_tag}"
             # Check if the source container exists
-            source_container_digest=$(skopeo inspect \
-              --override-arch "${arch}" \
-              --no-tags \
-              --format '{{.Digest}}' \
-              "docker://${sourceContainer}" 2>/dev/null)
+            source_container_digest=$(oras resolve --registry-config "$AUTH_FILE" --platform "${arch}" "${sourceContainer}" 2>/dev/null)
 
             if [ -z "$source_container_digest" ] ; then
               echo "Error: Source container ${sourceContainer} not found!"
